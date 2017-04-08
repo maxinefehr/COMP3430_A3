@@ -8,9 +8,9 @@
  *
  *************************************************************/
 
-#include <stdio.h>
+#include "fat32.h" 
 
 int main() {
-    printf("A3\n");
+    startShell();
     return 0;
 }

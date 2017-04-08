@@ -7,9 +7,9 @@ DEBUG_FLAGS = -g
 
 LDLIBS = #-lcurses -pthread
 
-OBJS = main.o 
+OBJS = main.o fat32.o
 
-EXE = a3 
+EXE = fat32 
 
 debug: CFLAGS = $(BASEFLAGS) $(DEBUG_FLAGS)
 debug: $(EXE)
@@ -23,8 +23,8 @@ $(EXE): $(OBJS)
 main.o: main.c 
 	$(CC) $(CFLAGS) -c main.c
 
-#console.o: console.c console.h
-#	$(CC) $(CFLAGS) -c console.c
+fat32.o: fat32.c fat32.h
+	$(CC) $(CFLAGS) -c fat32.c
 
 #shell.o: shell.c shell.h
 #	$(CC) $(CFLAGS) -c shell.c
