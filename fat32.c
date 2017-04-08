@@ -27,32 +27,32 @@
  * Function:    cdFcn
  * Return:      void
  */
-void cdFcn(char *input) {
-    printf("cdnFcn: User entered %s\n", input);
+void cdFcn(char *dir) {
+    printf("change directory to %s\n", dir);
 }
 
 /*
  * Function:    dirFcn 
  * Return:      void
  */
-void dirFcn(char *input) {
-    printf("dirFcn: User entered %s\n", input);
+void dirFcn() {
+    printf("\nDIRECTORY LISTING\n\n---DONE\n");
 }
 
 /*
  * Function:    getFcn
  * Return:      void
  */
-void getFcn(char *input) {
-    printf("getFcn: User entered %s\n", input);
+void getFcn(char *filename) {
+    printf("getting file %s\n\nDone.\n", filename);
 }
 
 /*
  * Function:    infoFcn
  * Return:      void
  */
-void infoFcn(char *input) {
-    printf("infoFcn: User entered %s\n", input);
+void infoFcn() {
+    printf("\n---- Device Info ----\n\n--- Geometry ---\n\n--- FS Info ---\n");
 }
 
 /*
@@ -60,19 +60,23 @@ void infoFcn(char *input) {
  * Return:      void
  */
 void processInput(char *userInput) {
+    char *tokenArray[MAX_STRING];
     int len;
+    int tokens;
+
     len = strlen(userInput);
     if (userInput[len-1] == '\n')
         userInput[len-1] = '\0';
 
-    if (0 == strcmp(userInput, "cd"))
-        cdFcn(userInput);
-    else if (0 == strcmp(userInput, "dir"))
-        dirFcn(userInput);
-    else if (0 == strcmp(userInput, "get"))
-        getFcn(userInput);
-    else if (0 == strcmp(userInput, "info"))
-        infoFcn(userInput);
+    tokens = tokenizeString(tokenArray, userInput, " ");
+    if (0 == strcmp(tokenArray[0], "cd") && 2 == tokens)
+        cdFcn(tokenArray[1]);
+    else if (0 == strcmp(tokenArray[0], "dir") && 1 == tokens)
+        dirFcn();
+    else if (0 == strcmp(tokenArray[0], "get") && 2 == tokens)
+        getFcn(tokenArray[1]);
+    else if (0 == strcmp(tokenArray[0], "info") && 1 == tokens)
+        infoFcn();
     else
         printf("Command not found\n");
 }
@@ -81,11 +85,12 @@ void processInput(char *userInput) {
  * Function:    startShell
  * Return:      void
  */
-void startShell(){
+void startShell(char *device){
     char buffer[BUFSIZE];       /* room for 80 chars plus \0 */
     char *userInput;            /* pointer to entered command */
     char prompt = '>';
    
+    printf("Reading from device: %s\n", device); /* Do some error checking to make sure device is valid */
     printf("%c", prompt);
     userInput = fgets(buffer, BUFSIZE, stdin);
 
@@ -94,5 +99,21 @@ void startShell(){
       printf("%c", prompt);
       userInput = fgets(buffer, BUFSIZE, stdin);
     }
-    printf("Exited..\n");
+    printf("\nExited..\n");
+}
+
+/* 
+ * Function:    tokenizeString
+ * Purpose:     Tokenize a string based on the delimiter provided.
+ * Return:      number of tokens (int)
+ */
+int tokenizeString(char **array, char *string, char *delim) {
+    char *token;
+    int count = 0;
+
+    while((token = strtok_r(string, delim, &string))) {
+        array[count] = token;
+        count++;
+    }
+    return count;
 }

@@ -10,10 +10,11 @@
 #define FAT32_H
 
 void cdFcn(char *);
-void dirFcn(char *);
-void infoFcn(char *);
+void dirFcn();
 void getFcn(char *);
+void infoFcn();
 void processInput(char *);
-void startShell();
+void startShell(char *);
+int tokenizeString(char **, char *, char *);
 
 #endif

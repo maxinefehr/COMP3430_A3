@@ -8,9 +8,13 @@
  *
  *************************************************************/
 
+#include <stdio.h>
 #include "fat32.h" 
 
-int main() {
-    startShell();
+int main(int argc, char *argv[]) {
+    if (2 == argc)
+        startShell(argv[1]);
+    else
+        printf("Invalid input. Use format \"./%s /dev/device\"\n", argv[0]);
     return 0;
 }
