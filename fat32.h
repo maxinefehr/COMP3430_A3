@@ -9,14 +9,6 @@
 #ifndef FAT32_H
 #define FAT32_H
 
-void cdFcn(char *);
-void dirFcn();
-void getFcn(char *);
-void infoFcn();
-void processInput(char *);
-void startShell(char *);
-int tokenizeString(char **, char *, char *);
-
 #include <inttypes.h>
 
 /* boot sector constants */
@@ -62,5 +54,13 @@ struct fat32BS_struct {
 #pragma pack(pop)
 
 typedef struct fat32BS_struct fat32BS;
+
+void cdFcn(char *);
+void dirFcn();
+void getFcn(char *);
+void infoFcn(fat32BS *);
+void processInput(char *);
+void startShell(char *);
+int tokenizeString(char **, char *, char *);
 
 #endif

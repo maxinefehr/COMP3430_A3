@@ -29,6 +29,7 @@
 #define BUFSIZE 81
 #define MAX_STRING 100
 
+fat32BS *sector0;
 /*
  * Function:    cdFcn
  * Return:      void
@@ -57,8 +58,34 @@ void getFcn(char *filename) {
  * Function:    infoFcn
  * Return:      void
  */
-void infoFcn() {
-    printf("\n---- Device Info ----\n\n--- Geometry ---\n\n--- FS Info ---\n");
+void infoFcn(fat32BS *bpb) {
+    int i;
+    /* DEVICE INFO */
+    printf("---- Device Info ----\n");
+    //printf("", bpb->);
+    printf("OEM Name: ");
+    for (i = 0; i < BS_OEMName_LENGTH; i++) {
+        printf("%c", bpb->BS_OEMName[i]);
+    } 
+    printf("\nLabel: ");    
+    for (i = 0; i < BS_OEMName_LENGTH; i++) {
+        printf("%c", bpb->BS_VolLab[i]);
+    }
+    printf("\nFile System Type: "); 
+    for (i = 0; i < BS_FilSysType_LENGTH; i++) {
+        printf("%c", bpb->BS_FilSysType[i]);
+    }
+    printf("\n");
+
+    /* GEOMETRY */
+    printf("\n--- Geometry ---\n");
+    printf("Bytes Per Sector: %d\n", bpb->BPB_BytesPerSec);    
+    printf("Sectors Per Cluster: %d\n", bpb->BPB_SecPerClus);
+    printf("Total Sectors: %d\n", bpb->BPB_TotSec32);
+
+    /* FS Info */
+    printf("\n--- FS Info ---\n");
+    
 }
 
 /*
@@ -82,7 +109,7 @@ void processInput(char *userInput) {
     else if (0 == strcmp(tokenArray[0], "get") && 2 == tokens)
         getFcn(tokenArray[1]);
     else if (0 == strcmp(tokenArray[0], "info") && 1 == tokens)
-        infoFcn();
+        infoFcn(sector0);
     else
         printf("Command not found\n");
 }
@@ -96,13 +123,13 @@ void startShell(char *device){
     char *userInput;            /* pointer to entered command */
     char prompt = '>';
     int fd = -1;
-    fat32BS *sector0 = malloc(sizeof(fat32BS));
   
     /* open file here, exiting on failure */
     if ((fd = open(device, O_RDONLY)) == -1) {
         printf("Device '%s' not found\n", device);
         exit(0);
     }
+    sector0 = malloc(sizeof(fat32BS));
     if ((read(fd, sector0, sizeof(fat32BS))) == -1) {
         printf("Read error\n");
         /* print info regarding error */
