@@ -15,6 +15,8 @@
 #define BS_OEMName_LENGTH 8
 #define BS_VolLab_LENGTH 11
 #define BS_FilSysType_LENGTH 8 
+#define FAT_ENTRIES_IN_SEC 128
+#define DIR_NAME_LENGTH 11
 
 #pragma pack(push)
 #pragma pack(1)
@@ -62,10 +64,31 @@ struct fat32FSInfo_struct {
     uint32_t FSI_TrailSig;
 };
 
+struct fatSector_struct {
+    uint32_t entry[FAT_ENTRIES_IN_SEC];
+};
+
+struct fat32Dir_struct {
+    uint8_t DIR_Name[DIR_NAME_LENGTH];
+    uint8_t DIR_Attr;
+    uint8_t DIR_NTRes;
+    uint8_t DIR_CrtTimeTenth;
+    uint16_t DIR_CrtTime;
+    uint16_t DIR_CrtDate;
+    uint16_t DIR_LstAccDate;
+    uint16_t DIR_FstClusHI;
+    uint16_t DIR_WrtTime;
+    uint16_t DIR_WrtDate;
+    uint16_t DIR_FstClusLO;
+    uint32_t DIR_FileSize;
+};
+
 #pragma pack(pop)
 
 typedef struct fat32BS_struct fat32BS;
 typedef struct fat32FSInfo_struct fat32FSInfo;
+typedef struct fatSector_struct fatSector;
+typedef struct fat32Dir_struct fat32Dir;
 
 void exitFcn(char *);
 void cdFcn(char *);
@@ -73,6 +96,7 @@ void dirFcn();
 void getFcn(char *);
 void infoFcn(fat32BS *);
 void processInput(char *);
+uint32_t readFAT(uint32_t);
 void startShell(char *);
 int tokenizeString(char **, char *, char *);
 

@@ -26,27 +26,49 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#define BUFSIZE 81
-#define MAX_STRING 100
-#define HARD_DISK_NUM 128
-#define FLOPPY_DISK_NUM 0
-#define MEDIA_FIXED 248
-#define MEDIA_REMOVABLE 240
-#define BSSIG_A 85
-#define BSSIG_B 170
-#define MB_DIV 1000000
-#define GB_DIV 1000000000
-#define MIRRORED 0
-#define ZERO 0
+#define BUFSIZE             81
+#define MAX_STRING          100
+#define HARD_DISK_NUM       128
+#define FLOPPY_DISK_NUM     0
+#define MEDIA_FIXED         248
+#define MEDIA_REMOVABLE     240
+#define BSSIG_A             85
+#define BSSIG_B             170
+#define MB_DIV              1000000
+#define GB_DIV              1000000000
+#define MIRRORED            0
+#define ZERO                0
+#define FAT32_MIN_CLUS      65525
  
+#define FAT_ENT_PER_SEC     128 
+#define EOC_MARK32          0x0FFFFFFF
+#define BAD_CLUS32          0x0FFFFFF7
+
+uint64_t rootDirSectors;
+uint64_t dataSec;
+uint64_t firstDataSector;
+uint64_t firstFATSector;
+uint64_t countOfClusters;
+uint32_t FATSz;
+uint16_t cluster_size_in_bytes;
+uint16_t sector_size_in_bytes;
 fat32BS *sector0;
+int *FATSecPtr;
 int fd;
+fat32FSInfo *FSInfo; 
+fat32Dir *CurrentDir;
+fat32Dir *RootDir;
+uint8_t *RootVolName;
 
 /*
  * Function:    exitFCN 
  * Return:      void
  */
 void exitFcn(char *msg) {
+    free(FATSecPtr);
+    free(sector0);
+    free(FSInfo);
+    free(RootDir);
     close(fd);
     printf("%s\n", msg);
     exit(0);
@@ -65,7 +87,11 @@ void cdFcn(char *dir) {
  * Return:      void
  */
 void dirFcn() {
-    printf("\nDIRECTORY LISTING\n\n---DONE\n");
+    printf("\nDIRECTORY LISTING\n");
+    printf("VOL_ID: %s\n\n", CurrentDir->DIR_Name);
+
+    printf("Bytes Free: \n");
+    printf("---DONE\n");
 }
 
 /*
@@ -82,9 +108,7 @@ void getFcn(char *filename) {
  */
 void infoFcn(fat32BS *bpb) {
     int i;
-    long long llBytesPerSec = (long long)bpb->BPB_BytesPerSec;
-    long long llTotalSec = (long long)bpb->BPB_TotSec32;
-    long long llTotalSize = llBytesPerSec * llTotalSec;
+    uint64_t u64TotalSize = (uint64_t)bpb->BPB_BytesPerSec * (uint64_t)bpb->BPB_TotSec32;
 
     /* DEVICE INFO */
     printf("---- Device Info ----\n");
@@ -105,7 +129,7 @@ void infoFcn(fat32BS *bpb) {
         printf("0x%02X (fixed)\n", bpb->BPB_Media);
     if (bpb->BPB_Media == MEDIA_REMOVABLE)
         printf("0x%02X (removable)\n", bpb->BPB_Media);
-    printf("Size: %lld bytes (%lldMB, %.3fGB)\n", llTotalSize, llTotalSize/MB_DIV, (double)llTotalSize/GB_DIV);
+    printf("Size: %"PRIu64" bytes (%"PRIu64"MB, %.3fGB)\n", u64TotalSize, u64TotalSize/MB_DIV, (double)u64TotalSize/GB_DIV);
     printf("Drive Number: ");
     if (bpb->BS_DrvNum == HARD_DISK_NUM)
         printf("%d (hard disk)\n",HARD_DISK_NUM );
@@ -123,7 +147,7 @@ void infoFcn(fat32BS *bpb) {
 
     /* FS Info */
     printf("\n--- FS Info ---\n");
-    printf("Volume ID: %d\n", bpb->BS_VolID);
+    printf("Volume ID: %s\n", RootVolName);
     printf("Version: %d:%d\n", bpb->BPB_FSVerHigh, bpb->BPB_FSVerLow);
     printf("Reserved Sectors: %d\n", bpb->BPB_RsvdSecCnt);
     printf("Number of FATs: %d\n", bpb->BPB_NumFATs);
@@ -161,6 +185,21 @@ void processInput(char *userInput) {
         printf("Command not found\n");
 }
 
+uint32_t readFAT(uint32_t cluster) {
+    uint32_t sector = cluster / FAT_ENT_PER_SEC;
+    uint16_t entry = cluster % FAT_ENT_PER_SEC;
+    uint32_t returnVal;
+    uint32_t mask = 0x0FFFFFFF; 
+    lseek(fd, FATSecPtr[sector], SEEK_SET);
+    fatSector *fatSec = malloc(sizeof(fatSector));
+    if ((read(fd, fatSec, sizeof(fatSector))) == -1) {
+        free(fatSec);
+        exitFcn("Read error");
+    }
+    returnVal = fatSec->entry[entry];
+    free(fatSec);
+    return (returnVal & mask);
+} 
 /*
  * Function:    startShell
  * Return:      void
@@ -170,7 +209,8 @@ void startShell(char *device){
     char *userInput;            /* pointer to entered command */
     char prompt = '>';
     fd = -1;
-  
+    int i;
+
     /* open file here, exiting on failure */
     if ((fd = open(device, O_RDONLY)) == -1) {
         exitFcn("Device not found");
@@ -185,11 +225,57 @@ void startShell(char *device){
     if ((sector0->BPB_TotSec16 != ZERO) || (sector0->BPB_FATSz16 != ZERO)) {
         exitFcn("FAT16 Descriptors are not 0.");
     }  
-    if (( (sector0->BPB_RootEntCnt * 32) + (sector0->BPB_BytesPerSec - 1) ) / (sector0->BPB_BytesPerSec) != ZERO) {
+    if (sector0->BPB_RootEntCnt != ZERO) {
         exitFcn("FAT Type Determination: not a FAT32 volume.");
     }
-        
-    printf("Reading from device: %s\n", device);
+    firstFATSector = sector0->BPB_RsvdSecCnt;
+    firstDataSector = sector0->BPB_RsvdSecCnt + (sector0->BPB_NumFATs * sector0->BPB_FATSz32) + rootDirSectors;     
+    rootDirSectors = (((sector0->BPB_RootEntCnt * 32) + (sector0->BPB_BytesPerSec - 1) ) / (sector0->BPB_BytesPerSec));
+    dataSec = sector0->BPB_TotSec32 - (sector0->BPB_RsvdSecCnt + (sector0->BPB_NumFATs * sector0->BPB_FATSz32) + rootDirSectors);     
+    countOfClusters = dataSec/sector0->BPB_SecPerClus;
+    if (countOfClusters >= FAT32_MIN_CLUS)
+        printf("This is a FAT32 volume with %"PRIu64" clusters\n", countOfClusters);
+    else
+        exitFcn("Not a FAT32 volume");
+    
+    sector_size_in_bytes = sector0->BPB_BytesPerSec;
+    cluster_size_in_bytes = sector_size_in_bytes * (uint16_t)sector0->BPB_SecPerClus;
+    printf("Sector size in bytes: %u, cluster size in bytes: %u\n", sector_size_in_bytes, cluster_size_in_bytes); 
+
+    FATSz = sector0->BPB_FATSz32;
+    FATSecPtr = malloc(sizeof(int) * FATSz);
+    for (i = 0; i < FATSz; i++) {
+        FATSecPtr[i] = (sector0->BPB_RsvdSecCnt + i) * sector_size_in_bytes;
+    }
+
+    FSInfo = malloc(sizeof(fat32FSInfo));
+    lseek(fd, sector0->BPB_FSInfo * sector_size_in_bytes, SEEK_SET);
+    if ((read(fd, FSInfo, sizeof(fat32FSInfo))) == -1) {
+        exitFcn("FSInfo: Read error");
+    }
+    printf("FSI_LeadSig: 0x%08X\n", FSInfo->FSI_LeadSig);
+    printf("FSI_StrucSig: 0x%08X\n", FSInfo->FSI_StrucSig);
+    printf("FSI_TrailSig: 0x%08X\n", FSInfo->FSI_TrailSig);
+    for (i = 0; i < 3; i++) {
+        printf("Entry for cluster %d: 0x%08X\n", i, readFAT((uint32_t)i));
+    }
+    //printf("Entry for cluster %d: 0x%08X\n", FATSz*128, readFAT((uint32_t)FATSz*128));
+    
+
+    /* Reading root dir */
+    RootDir = malloc(sizeof(fat32Dir));
+    lseek(fd, firstDataSector * sector_size_in_bytes, SEEK_SET);
+    if ((read(fd, RootDir, sizeof(fat32Dir))) == -1) {
+        exitFcn("FSInfo: Read error");
+    }
+    if (RootDir->DIR_Attr != 8)
+        exitFcn("Root dir not successfully accessed\n");
+    printf("DIR_Attr: 0x%02X\n", RootDir->DIR_Attr);
+    printf("DIR_Name: %s", RootDir->DIR_Name);
+    RootVolName = RootDir->DIR_Name;    
+    CurrentDir = RootDir;
+
+    printf("\nReading from device: %s\n", device);
     printf("%c", prompt);
     userInput = fgets(buffer, BUFSIZE, stdin);
 
