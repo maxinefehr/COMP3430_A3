@@ -28,8 +28,30 @@
 
 #define BUFSIZE 81
 #define MAX_STRING 100
-
+#define HARD_DISK_NUM 128
+#define FLOPPY_DISK_NUM 0
+#define MEDIA_FIXED 248
+#define MEDIA_REMOVABLE 240
+#define BSSIG_A 85
+#define BSSIG_B 170
+#define MB_DIV 1000000
+#define GB_DIV 1000000000
+#define MIRRORED 0
+#define ZERO 0
+ 
 fat32BS *sector0;
+int fd;
+
+/*
+ * Function:    exitFCN 
+ * Return:      void
+ */
+void exitFcn(char *msg) {
+    close(fd);
+    printf("%s\n", msg);
+    exit(0);
+}
+
 /*
  * Function:    cdFcn
  * Return:      void
@@ -60,9 +82,12 @@ void getFcn(char *filename) {
  */
 void infoFcn(fat32BS *bpb) {
     int i;
+    long long llBytesPerSec = (long long)bpb->BPB_BytesPerSec;
+    long long llTotalSec = (long long)bpb->BPB_TotSec32;
+    long long llTotalSize = llBytesPerSec * llTotalSec;
+
     /* DEVICE INFO */
     printf("---- Device Info ----\n");
-    //printf("", bpb->);
     printf("OEM Name: ");
     for (i = 0; i < BS_OEMName_LENGTH; i++) {
         printf("%c", bpb->BS_OEMName[i]);
@@ -75,17 +100,39 @@ void infoFcn(fat32BS *bpb) {
     for (i = 0; i < BS_FilSysType_LENGTH; i++) {
         printf("%c", bpb->BS_FilSysType[i]);
     }
-    printf("\n");
+    printf("\nMedia Type: ");
+    if (bpb->BPB_Media == MEDIA_FIXED)
+        printf("0x%02X (fixed)\n", bpb->BPB_Media);
+    if (bpb->BPB_Media == MEDIA_REMOVABLE)
+        printf("0x%02X (removable)\n", bpb->BPB_Media);
+    printf("Size: %lld bytes (%lldMB, %.3fGB)\n", llTotalSize, llTotalSize/MB_DIV, (double)llTotalSize/GB_DIV);
+    printf("Drive Number: ");
+    if (bpb->BS_DrvNum == HARD_DISK_NUM)
+        printf("%d (hard disk)\n",HARD_DISK_NUM );
+    else if (bpb->BS_DrvNum == FLOPPY_DISK_NUM)
+        printf("%d (floppy disk)\n", FLOPPY_DISK_NUM);
 
     /* GEOMETRY */
     printf("\n--- Geometry ---\n");
     printf("Bytes Per Sector: %d\n", bpb->BPB_BytesPerSec);    
     printf("Sectors Per Cluster: %d\n", bpb->BPB_SecPerClus);
     printf("Total Sectors: %d\n", bpb->BPB_TotSec32);
+    printf("Geom: Sectors Per Track: %d\n", bpb->BPB_SecPerTrk  );
+    printf("Geom: Heads: %d\n", bpb->BPB_NumHeads);
+    printf("Hidden Sectors: %d\n", bpb->BPB_HiddSec);
 
     /* FS Info */
     printf("\n--- FS Info ---\n");
-    
+    printf("Volume ID: %d\n", bpb->BS_VolID);
+    printf("Version: %d:%d\n", bpb->BPB_FSVerHigh, bpb->BPB_FSVerLow);
+    printf("Reserved Sectors: %d\n", bpb->BPB_RsvdSecCnt);
+    printf("Number of FATs: %d\n", bpb->BPB_NumFATs);
+    printf("Mirrored FAT: ");
+    if (bpb->BPB_ExtFlags == MIRRORED)
+        printf("0 (yes)\n");
+    else
+        printf("1 (no)\n");
+    printf("Boot Sector Backup Sector No: %d\n", bpb->BPB_BkBootSec);
 }
 
 /*
@@ -122,21 +169,27 @@ void startShell(char *device){
     char buffer[BUFSIZE];       /* room for 80 chars plus \0 */
     char *userInput;            /* pointer to entered command */
     char prompt = '>';
-    int fd = -1;
+    fd = -1;
   
     /* open file here, exiting on failure */
     if ((fd = open(device, O_RDONLY)) == -1) {
-        printf("Device '%s' not found\n", device);
-        exit(0);
+        exitFcn("Device not found");
     }
     sector0 = malloc(sizeof(fat32BS));
     if ((read(fd, sector0, sizeof(fat32BS))) == -1) {
-        printf("Read error\n");
-        /* print info regarding error */
-        exit(0);
+        exitFcn("Read error");
     }
- 
-    printf("Reading from device: %s\n", device); /* Do some error checking to make sure device is valid */
+    if ((sector0->BS_SigA != BSSIG_A) || (sector0->BS_SigB != BSSIG_B)) {
+        exitFcn("Boot sector sig btyes are incorrect.");
+    }       
+    if ((sector0->BPB_TotSec16 != ZERO) || (sector0->BPB_FATSz16 != ZERO)) {
+        exitFcn("FAT16 Descriptors are not 0.");
+    }  
+    if (( (sector0->BPB_RootEntCnt * 32) + (sector0->BPB_BytesPerSec - 1) ) / (sector0->BPB_BytesPerSec) != ZERO) {
+        exitFcn("FAT Type Determination: not a FAT32 volume.");
+    }
+        
+    printf("Reading from device: %s\n", device);
     printf("%c", prompt);
     userInput = fgets(buffer, BUFSIZE, stdin);
 
@@ -145,8 +198,8 @@ void startShell(char *device){
       printf("%c", prompt);
       userInput = fgets(buffer, BUFSIZE, stdin);
     }
-    close(fd);
-    printf("\nExited..\n");
+
+    exitFcn("\nExited..");
 }
 
 /* 

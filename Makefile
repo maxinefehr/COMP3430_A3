@@ -1,7 +1,7 @@
 
 CC = gcc
 
-BASEFLAGS = -Wall #-pthread 
+BASEFLAGS = -Wall #-std=c99#-pthread 
 NODEBUG_FLAGS = -dNDEBUG 
 DEBUG_FLAGS = -g
 

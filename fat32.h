@@ -51,10 +51,23 @@ struct fat32BS_struct {
     uint8_t BS_SigA;
     uint8_t BS_SigB;
 };
+
+struct fat32FSInfo_struct {
+    uint32_t FSI_LeadSig;
+    uint8_t FSI_Reserved1[480];
+    uint32_t FSI_StrucSig;
+    uint32_t FSI_Free_Count;
+    uint32_t FSI_Nxt_Free;
+    uint8_t FSI_Reserved2[12];
+    uint32_t FSI_TrailSig;
+};
+
 #pragma pack(pop)
 
 typedef struct fat32BS_struct fat32BS;
+typedef struct fat32FSInfo_struct fat32FSInfo;
 
+void exitFcn(char *);
 void cdFcn(char *);
 void dirFcn();
 void getFcn(char *);
