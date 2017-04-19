@@ -160,6 +160,27 @@ void infoFcn(fat32BS *bpb) {
 }
 
 /*
+ * Function:    mapDrive 
+ * Return:      void
+ */
+void mapDrive() {
+//    uint8_t cluster[cluster_size_in_bytes];
+    fat32Dir *dir = malloc(sizeof(fat32Dir));
+    uint64_t i;    
+    uint64_t offset = firstDataSector + cluster_size_in_bytes;
+    lseek(fd, offset, SEEK_SET);
+    for (i = 1; i < countOfClusters; i++){
+        if ((read(fd, dir, sizeof(fat32Dir))) == -1) {
+            free(dir);
+            exitFcn("Cluster read error");
+        }
+        //printf("Cluster %"PRIu64" DIR_Name: %s\n", i, dir->DIR_Name);
+        lseek(fd, cluster_size_in_bytes, SEEK_CUR);
+    }
+    free(dir);   
+}
+
+/*
  * Function:    processInput 
  * Return:      void
  */
@@ -271,10 +292,15 @@ void startShell(char *device){
     if (RootDir->DIR_Attr != 8)
         exitFcn("Root dir not successfully accessed\n");
     printf("DIR_Attr: 0x%02X\n", RootDir->DIR_Attr);
-    printf("DIR_Name: %s", RootDir->DIR_Name);
+    printf("DIR_Name: %s\n", RootDir->DIR_Name);
+    printf("DIR_FstClusHI: %d\n", RootDir->DIR_FstClusHI);
+    printf("DIR_FstClusLO: %d\n", RootDir->DIR_FstClusLO);
+    printf("DIR_FileSize: %d\n", RootDir->DIR_FileSize);
+//    printf("DIR_Name: %s", RootDir->DIR_Name);
     RootVolName = RootDir->DIR_Name;    
     CurrentDir = RootDir;
 
+    mapDrive();
     printf("\nReading from device: %s\n", device);
     printf("%c", prompt);
     userInput = fgets(buffer, BUFSIZE, stdin);
