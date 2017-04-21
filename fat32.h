@@ -98,6 +98,7 @@ typedef struct dirList_struct dirList;
 
 void exitFcn(char *);
 void cdFcn(char *);
+void printDirString(uint8_t *str, uint8_t attr);
 void dirFcn();
 void getFcn(char *);
 void infoFcn(fat32BS *);
