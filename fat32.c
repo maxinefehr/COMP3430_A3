@@ -87,10 +87,35 @@ void cdFcn(char *dir) {
  * Return:      void
  */
 void dirFcn() {
+    uint64_t freeClusters = 0;
+    uint64_t i;
     printf("\nDIRECTORY LISTING\n");
-    printf("VOL_ID: %s\n\n", CurrentDir->DIR_Name);
-
-    printf("Bytes Free: \n");
+    //printf("VOL_ID: %s\n\n", CurrentDir->DIR_Name);
+    printf("VOL_ID: %s\n\n", RootVolName); 
+    //lseek(fd, 32, SEEK_CUR);
+    seekToClus(sector0->BPB_RootClus);
+    if ((read(fd, CurrentDir, sizeof(fat32Dir))) == -1) {
+        exitFcn("CurrentDir: Read error");
+    }
+    
+    while(CurrentDir->DIR_Name[0] != 0) {
+        if (CurrentDir->DIR_Attr == 0x10)
+            printf("<%s>\t\t%d\n", CurrentDir->DIR_Name, CurrentDir->DIR_FileSize);
+        else if (CurrentDir->DIR_Attr == 0x20)
+            printf("%c%c%c%c%c%c%c%c.%c%c%c\t\t%d\n", CurrentDir->DIR_Name[0], CurrentDir->DIR_Name[1], CurrentDir->DIR_Name[2], CurrentDir->DIR_Name[3], CurrentDir->DIR_Name[4], CurrentDir->DIR_Name[5], CurrentDir->DIR_Name[6], CurrentDir->DIR_Name[7], CurrentDir->DIR_Name[8], CurrentDir->DIR_Name[9], CurrentDir->DIR_Name[10], CurrentDir->DIR_FileSize);
+        //printf("<size here>\n");
+        lseek(fd, 32, SEEK_CUR);
+        if ((read(fd, CurrentDir, sizeof(fat32Dir))) == -1) {
+            exitFcn("CurrentDir: Read error");
+        }
+    }
+    for (i = 0; i < countOfClusters; i++) {
+        if (readFAT(i+2) == 0) {
+            freeClusters++;
+        }   
+    }
+//    CurrentDir = RootDir;
+    printf("Bytes Free: %"PRIu64"\n", freeClusters * cluster_size_in_bytes);
     printf("---DONE\n");
 }
 
@@ -164,20 +189,6 @@ void infoFcn(fat32BS *bpb) {
  * Return:      void
  */
 void mapDrive() {
-//    uint8_t cluster[cluster_size_in_bytes];
-    fat32Dir *dir = malloc(sizeof(fat32Dir));
-    uint64_t i;    
-    uint64_t offset = firstDataSector + cluster_size_in_bytes;
-    lseek(fd, offset, SEEK_SET);
-    for (i = 1; i < countOfClusters; i++){
-        if ((read(fd, dir, sizeof(fat32Dir))) == -1) {
-            free(dir);
-            exitFcn("Cluster read error");
-        }
-        //printf("Cluster %"PRIu64" DIR_Name: %s\n", i, dir->DIR_Name);
-        lseek(fd, cluster_size_in_bytes, SEEK_CUR);
-    }
-    free(dir);   
 }
 
 /*
@@ -204,6 +215,24 @@ void processInput(char *userInput) {
         infoFcn(sector0);
     else
         printf("Command not found\n");
+}
+
+void push_dir(uint64_t clusterNumber, dirList *head) {
+    if (head == NULL)
+        head = malloc(sizeof(dirList));
+    dirList *current = head;
+    while (current->next != NULL)
+        current = current->next;
+    current->next = malloc(sizeof(dirList));
+    current->next->clusterNumber = clusterNumber;
+    current->next->next = NULL;
+}
+
+void printList_dir(dirList *head) {
+    dirList *current = head;
+    while (current != NULL) {
+        printf("%"PRIu64"\n", current->clusterNumber);
+    }
 }
 
 uint32_t readFAT(uint32_t cluster) {
@@ -285,7 +314,8 @@ void startShell(char *device){
 
     /* Reading root dir */
     RootDir = malloc(sizeof(fat32Dir));
-    lseek(fd, firstDataSector * sector_size_in_bytes, SEEK_SET);
+    printf("Fat entry for cluster2: 0x%08X\n", readFAT(sector0->BPB_RootClus));
+    seekToClus(sector0->BPB_RootClus);
     if ((read(fd, RootDir, sizeof(fat32Dir))) == -1) {
         exitFcn("FSInfo: Read error");
     }
@@ -296,11 +326,12 @@ void startShell(char *device){
     printf("DIR_FstClusHI: %d\n", RootDir->DIR_FstClusHI);
     printf("DIR_FstClusLO: %d\n", RootDir->DIR_FstClusLO);
     printf("DIR_FileSize: %d\n", RootDir->DIR_FileSize);
-//    printf("DIR_Name: %s", RootDir->DIR_Name);
+    printf("BPB_RootClus: %u\n", sector0->BPB_RootClus);
     RootVolName = RootDir->DIR_Name;    
-    CurrentDir = RootDir;
+    CurrentDir = malloc(sizeof(fat32Dir));
 
-    mapDrive();
+    //mapDrive();
+
     printf("\nReading from device: %s\n", device);
     printf("%c", prompt);
     userInput = fgets(buffer, BUFSIZE, stdin);
@@ -312,6 +343,10 @@ void startShell(char *device){
     }
 
     exitFcn("\nExited..");
+}
+
+void seekToClus(uint32_t cluster) {
+    lseek(fd, ((cluster - 2) * cluster_size_in_bytes) + (firstDataSector * sector_size_in_bytes), SEEK_SET);
 }
 
 /* 
