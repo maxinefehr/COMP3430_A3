@@ -43,6 +43,7 @@
 #define FAT_ENT_PER_SEC     128 
 #define EOC_MARK32          0x0FFFFFFF
 #define BAD_CLUS32          0x0FFFFFF7
+#define MAX_DIR_NUM         100
 
 uint64_t rootDirSectors;
 uint64_t dataSec;
@@ -57,9 +58,13 @@ int *FATSecPtr;
 int fd;
 fat32FSInfo *FSInfo; 
 fat32Dir *CurrentDir;
+uint32_t currentCluster;
+fat32Dir *nextDir;
 fat32Dir *RootDir;
-uint8_t *RootVolName;
+uint8_t RootVolName[DIR_NAME_LENGTH+1];
 uint8_t curDirName[DIR_NAME_LENGTH+1];
+dirEntry *listing[MAX_DIR_NUM];
+int dirCount;
 
 /*
  * Function:    exitFCN 
@@ -80,7 +85,29 @@ void exitFcn(char *msg) {
  * Return:      void
  */
 void cdFcn(char *dir) {
-    printf("change directory to %s\n", dir);
+    int i;
+    int found = 0;
+    char *str;
+    for (i = 0; i < dirCount; i++) {
+        str = (char *)listing[i]->name;
+        if (strcmp(dir, str) == 0) {
+            found = 1;
+            if (listing[i]->low == 0)
+                currentCluster = sector0->BPB_RootClus;
+            else
+                currentCluster = (((uint32_t)listing[i]->high) << 16) + ((uint32_t)listing[i]->low);
+        }    
+    }     
+    if (1 == found) {
+        seekToClus(currentCluster);
+        if ((read(fd, CurrentDir, sizeof(fat32Dir))) == -1) {
+            exitFcn("cdFcn: Read error");
+        }
+        createDirListing(currentCluster);
+    } else {
+        printf("Directory '%s' not found\n", dir);
+    }
+
 }
 
 void printDirString(uint8_t *str, uint8_t attr) {
@@ -115,7 +142,7 @@ void printDirString(uint8_t *str, uint8_t attr) {
     }   
     returnStr[r] = '\0';
     if ((attr == 0x20 || attr == 0x10) && (str[0] != 0xE5 && str[0] != 0x05))
-        printf("%s\t\t%d\n", returnStr, CurrentDir->DIR_FileSize);
+        printf("%s\t\t%d\t\t\n", returnStr, nextDir->DIR_FileSize);
 }
 
 /*
@@ -125,25 +152,33 @@ void printDirString(uint8_t *str, uint8_t attr) {
 void dirFcn() {
     uint64_t freeClusters = 0;
     uint64_t i;
+    nextDir = malloc(sizeof(fat32Dir));
     printf("\nDIRECTORY LISTING\n");
     printf("VOL_ID: %s\n\n", RootVolName); 
-    seekToClus(sector0->BPB_RootClus);
-    if ((read(fd, CurrentDir, sizeof(fat32Dir))) == -1) {
-        exitFcn("CurrentDir: Read error");
+
+    /* Check if it is the root dir */
+    if (CurrentDir->DIR_Attr == 0x08){
+        ;//printf("This is the root directory\n");
     }
-    while(CurrentDir->DIR_Name[0] != 0 ) {
+    seekToClus(currentCluster);
+    if ((read(fd, nextDir, sizeof(fat32Dir))) == -1) {
+        exitFcn("nextDir: Read error");
+    }
+
+    while(nextDir->DIR_Name[0] != 0 ) {
     for (i = 0; i < DIR_NAME_LENGTH; i++)
-        curDirName[i] = CurrentDir->DIR_Name[i];
+        curDirName[i] = nextDir->DIR_Name[i];
             curDirName[i] = '\0';        
         
         /*printing*/
-        printDirString(curDirName, CurrentDir->DIR_Attr);
+        printDirString(curDirName, nextDir->DIR_Attr);
         
         /* reading next */
-        if ((read(fd, CurrentDir, sizeof(fat32Dir))) == -1) {
-            exitFcn("CurrentDir: Read error");
+        if ((read(fd, nextDir, sizeof(fat32Dir))) == -1) {
+            exitFcn("nextDir: Read error");
         }
     }
+    /* get free cluster count */
     if (FSInfo->FSI_Free_Count == 0xFFFFFFFF) {
         for (i=0; i < countOfClusters; i++) {
             if (readFAT(i+2) == 0) {
@@ -153,10 +188,9 @@ void dirFcn() {
     } else {
         freeClusters = FSInfo->FSI_Free_Count;
     }
-           
-    
     printf("---Bytes Free: %"PRIu64"\n", freeClusters * cluster_size_in_bytes);
     printf("---DONE\n");
+    free(nextDir);
 }
 
 /*
@@ -164,7 +198,8 @@ void dirFcn() {
  * Return:      void
  */
 void getFcn(char *filename) {
-    printf("getting file %s\n\nDone.\n", filename);
+    //printf("getting file %s\n\nDone.\n", filename);
+    printf("Get function is not complete, unable to get \"%s\"\n", filename);
 }
 
 /*
@@ -347,31 +382,29 @@ void startShell(char *device){
 //    printf("FSI_LeadSig: 0x%08X\n", FSInfo->FSI_LeadSig);
 //    printf("FSI_StrucSig: 0x%08X\n", FSInfo->FSI_StrucSig);
 //    printf("FSI_TrailSig: 0x%08X\n", FSInfo->FSI_TrailSig);
-    for (i = 0; i < 3; i++) {
-//        printf("Entry for cluster %d: 0x%08X\n", i, readFAT((uint32_t)i));
-    }
-    //printf("Entry for cluster %d: 0x%08X\n", FATSz*128, readFAT((uint32_t)FATSz*128));
-    
 
     /* Reading root dir */
     RootDir = malloc(sizeof(fat32Dir));
 //    printf("Fat entry for cluster2: 0x%08X\n", readFAT(sector0->BPB_RootClus));
-    seekToClus(sector0->BPB_RootClus);
+    currentCluster = sector0->BPB_RootClus;
+    seekToClus(currentCluster);
     if ((read(fd, RootDir, sizeof(fat32Dir))) == -1) {
         exitFcn("FSInfo: Read error");
     }
     if (RootDir->DIR_Attr != 8)
         exitFcn("Root dir not successfully accessed\n");
-//    printf("DIR_Attr: 0x%02X\n", RootDir->DIR_Attr);
-//    printf("DIR_Name: %s\n", RootDir->DIR_Name);
-//    printf("DIR_FstClusHI: %d\n", RootDir->DIR_FstClusHI);
-//    printf("DIR_FstClusLO: %d\n", RootDir->DIR_FstClusLO);
-//    printf("DIR_FileSize: %d\n", RootDir->DIR_FileSize);
-//    printf("BPB_RootClus: %u\n", sector0->BPB_RootClus);
-    RootVolName = RootDir->DIR_Name;    
-    CurrentDir = malloc(sizeof(fat32Dir));
 
-    //mapDrive();
+    for (i = 0; i < DIR_NAME_LENGTH; i++)
+        RootVolName[i] = RootDir->DIR_Name[i];
+    RootVolName[i] = '\0';
+
+    CurrentDir = malloc(sizeof(fat32Dir));
+    CurrentDir = RootDir;
+
+    //printf("before dirlist...\n");
+    /* create dir list here */
+    createDirListing(currentCluster);
+    //printf("after dirlist...\n");
 
 //    printf("\nReading from device: %s\n", device);
     printf("%c", prompt);
@@ -384,6 +417,38 @@ void startShell(char *device){
     }
 
     exitFcn("\nExited..");
+}
+
+void createDirListing(uint32_t dirCluster) {
+    dirCount = 0;
+    int i = 0;
+    nextDir = malloc(sizeof(fat32Dir));
+    seekToClus(dirCluster);    
+    if ((read(fd, nextDir, sizeof(fat32Dir))) == -1) {
+        exitFcn("createDirListing: Read error");
+    }
+    while (nextDir->DIR_Name[0] != 0x00) {
+        if (nextDir->DIR_Name[0] != 0xE5) {
+            if (nextDir->DIR_Attr == 0x10) {
+                listing[dirCount] = malloc(sizeof(dirEntry));
+                for (i = 0; i < DIR_NAME_LENGTH; i++) {
+                    if (nextDir->DIR_Name[i] != 0x20)
+                        listing[dirCount]->name[i] = nextDir->DIR_Name[i];
+                }
+                listing[dirCount]->name[i] = '\0';
+                listing[dirCount]->high = nextDir->DIR_FstClusHI;
+                listing[dirCount]->low = nextDir->DIR_FstClusLO;
+                dirCount++;                
+            }
+        }
+        if ((read(fd, nextDir, sizeof(fat32Dir))) == -1) {
+            exitFcn("createDirListing: Read error");
+        }   
+    }
+    free(nextDir);
+    /* print created list */
+    //for (i = 0; i < dirCount; i++)
+    //    printf("Folder %s: HB %u, LB %u\n", listing[i]->name, listing[i]->high, listing[i]->low);
 }
 
 void seekToClus(uint32_t cluster) {

@@ -88,6 +88,12 @@ struct dirList_struct {
     struct dirList_struct *next;
 };
 
+struct dirEntry_struct {
+    uint8_t name[DIR_NAME_LENGTH+1];
+    uint16_t high;
+    uint16_t low;
+};
+
 #pragma pack(pop)
 
 typedef struct fat32BS_struct fat32BS;
@@ -95,12 +101,14 @@ typedef struct fat32FSInfo_struct fat32FSInfo;
 typedef struct fatSector_struct fatSector;
 typedef struct fat32Dir_struct fat32Dir;
 typedef struct dirList_struct dirList;
+typedef struct dirEntry_struct dirEntry;
 
 void exitFcn(char *);
 void cdFcn(char *);
 void printDirString(uint8_t *str, uint8_t attr);
 void dirFcn();
 void getFcn(char *);
+void createDirListing(uint32_t);
 void infoFcn(fat32BS *);
 void processInput(char *);
 void push_dir(uint64_t clusterNumber, dirList *);
