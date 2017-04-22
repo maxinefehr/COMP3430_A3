@@ -83,11 +83,6 @@ struct fat32Dir_struct {
     uint32_t DIR_FileSize;
 };
 
-struct dirList_struct {
-    uint64_t clusterNumber;
-    struct dirList_struct *next;
-};
-
 struct dirEntry_struct {
     uint8_t name[DIR_NAME_LENGTH+1];
     uint16_t high;
@@ -100,7 +95,6 @@ typedef struct fat32BS_struct fat32BS;
 typedef struct fat32FSInfo_struct fat32FSInfo;
 typedef struct fatSector_struct fatSector;
 typedef struct fat32Dir_struct fat32Dir;
-typedef struct dirList_struct dirList;
 typedef struct dirEntry_struct dirEntry;
 
 void exitFcn(char *);
@@ -111,8 +105,6 @@ void getFcn(char *);
 void createDirListing(uint32_t);
 void infoFcn(fat32BS *);
 void processInput(char *);
-void push_dir(uint64_t clusterNumber, dirList *);
-void printList_dir(dirList *);
 uint32_t readFAT(uint32_t);
 void startShell(char *);
 void seekToClus(uint32_t);

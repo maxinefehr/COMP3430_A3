@@ -7,7 +7,7 @@
  *
  * Course:          COMP 3430: Operating Systems
  * Assignment:      Assignment #3
- * Due Date:        April 7, 2017 
+ * Due Date:        April 21, 2017 
  *
  **************************************************/
 
@@ -44,6 +44,10 @@
 #define EOC_MARK32          0x0FFFFFFF
 #define BAD_CLUS32          0x0FFFFFF7
 #define MAX_DIR_NUM         100
+
+#define ATTR_VOLID          0x08
+#define ATTR_DIR            0x10
+#define ATTR_ARCHIVE        0x20
 
 uint64_t rootDirSectors;
 uint64_t dataSec;
@@ -117,7 +121,7 @@ void printDirString(uint8_t *str, uint8_t attr) {
     int r = 0;
     int i;
     int padding = 0;
-    if (attr == 0x10) {
+    if (attr == ATTR_DIR) {
         returnStr[r] = '<';
         r++;
     }
@@ -129,12 +133,12 @@ void printDirString(uint8_t *str, uint8_t attr) {
         } else {
             padding++;
         }
-        if (i == 7 && attr == 0x20) {
+        if (i == 7 && attr == ATTR_ARCHIVE) {
             returnStr[r] = '.';
             r++;
         }   
     } 
-    if (attr == 0x10) {
+    if (attr == ATTR_DIR) {
         returnStr[r] = '>';
         r++;
     }
@@ -143,7 +147,7 @@ void printDirString(uint8_t *str, uint8_t attr) {
         r++;
     }   
     returnStr[r] = '\0';
-    if ((attr == 0x20 || attr == 0x10) && (str[0] != 0xE5 && str[0] != 0x05))
+    if ((attr == ATTR_ARCHIVE || attr == ATTR_DIR) && (str[0] != 0xE5 && str[0] != 0x05))
         printf("%s\t\t%d\t\t\n", returnStr, nextDir->DIR_FileSize);
 }
 
@@ -159,7 +163,7 @@ void dirFcn() {
     printf("VOL_ID: %s\n\n", RootVolName); 
 
     /* Check if it is the root dir */
-    if (CurrentDir->DIR_Attr == 0x08){
+    if (CurrentDir->DIR_Attr == ATTR_VOLID){
         ;//printf("This is the root directory\n");
     }
     seekToClus(currentCluster);
@@ -220,7 +224,7 @@ void getFcn(char *filename) {
         }    
     }     
     if (1 == found) {
-        printf("File: \"%s\" found at cluster 0x%08X\n", filename, fileCluster);
+        /* printf("File: \"%s\" found at cluster 0x%08X\n", filename, fileCluster); */
         write_fd = open(filename, O_RDWR | O_CREAT, 00700);
         
         while (0 == done) {    
@@ -234,15 +238,10 @@ void getFcn(char *filename) {
                 fileCluster = nextCluster;
         }
         close(write_fd);
-        
-        //seekToClus(currentCluster);
-        //if ((read(fd, CurrentDir, sizeof(fat32Dir))) == -1) {
-        //    exitFcn("cdFcn: Read error");
-        //}
+        printf("\nDone.\n");
     } else {
         printf("File '%s' not found\n", filename);
     }
-    printf("Get function is not complete, unable to get \"%s\"\n", filename);
 }
 
 /*
@@ -303,13 +302,6 @@ void infoFcn(fat32BS *bpb) {
 }
 
 /*
- * Function:    mapDrive 
- * Return:      void
- */
-void mapDrive() {
-}
-
-/*
  * Function:    processInput 
  * Return:      void
  */
@@ -333,24 +325,6 @@ void processInput(char *userInput) {
         infoFcn(sector0);
     else
         printf("Command not found\n");
-}
-
-void push_dir(uint64_t clusterNumber, dirList *head) {
-    if (head == NULL)
-        head = malloc(sizeof(dirList));
-    dirList *current = head;
-    while (current->next != NULL)
-        current = current->next;
-    current->next = malloc(sizeof(dirList));
-    current->next->clusterNumber = clusterNumber;
-    current->next->next = NULL;
-}
-
-void printList_dir(dirList *head) {
-    dirList *current = head;
-    while (current != NULL) {
-        printf("%"PRIu64"\n", current->clusterNumber);
-    }
 }
 
 uint32_t readFAT(uint32_t cluster) {
@@ -472,7 +446,7 @@ void createDirListing(uint32_t dirCluster) {
     }
     while (nextDir->DIR_Name[0] != 0x00) {
         if (nextDir->DIR_Name[0] != 0xE5) {
-            if (nextDir->DIR_Attr == 0x10) {
+            if (nextDir->DIR_Attr == ATTR_DIR) {
                 listing[dirCount] = malloc(sizeof(dirEntry));
                 for (i = 0; i < DIR_NAME_LENGTH; i++) {
                     if (nextDir->DIR_Name[i] != 0x20)
@@ -485,7 +459,7 @@ void createDirListing(uint32_t dirCluster) {
             }
         }
         r = 0;
-        if (nextDir->DIR_Attr == 0x20) {
+        if (nextDir->DIR_Attr == ATTR_ARCHIVE) {
             fileListing[fileCount] = malloc(sizeof(dirEntry));
             for (i = 0; i < DIR_NAME_LENGTH; i++) {
                 if (nextDir->DIR_Name[i] != 0x20){
@@ -508,8 +482,8 @@ void createDirListing(uint32_t dirCluster) {
     }
     free(nextDir);
     /* print created list */
-    for (i = 0; i < fileCount; i++)
-        printf("File %s: HB %u, LB %u\n", fileListing[i]->name, fileListing[i]->high, fileListing[i]->low);
+//    for (i = 0; i < fileCount; i++)
+//        printf("File %s: HB %u, LB %u\n", fileListing[i]->name, fileListing[i]->high, fileListing[i]->low);
 }
 
 void seekToClus(uint32_t cluster) {
