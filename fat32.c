@@ -64,7 +64,9 @@ fat32Dir *RootDir;
 uint8_t RootVolName[DIR_NAME_LENGTH+1];
 uint8_t curDirName[DIR_NAME_LENGTH+1];
 dirEntry *listing[MAX_DIR_NUM];
+dirEntry *fileListing[MAX_DIR_NUM];
 int dirCount;
+int fileCount;
 
 /*
  * Function:    exitFCN 
@@ -92,7 +94,7 @@ void cdFcn(char *dir) {
         str = (char *)listing[i]->name;
         if (strcmp(dir, str) == 0) {
             found = 1;
-            if (listing[i]->low == 0)
+            if (listing[i]->low == 0 && listing[i]->high == 0)
                 currentCluster = sector0->BPB_RootClus;
             else
                 currentCluster = (((uint32_t)listing[i]->high) << 16) + ((uint32_t)listing[i]->low);
@@ -198,7 +200,48 @@ void dirFcn() {
  * Return:      void
  */
 void getFcn(char *filename) {
-    //printf("getting file %s\n\nDone.\n", filename);
+    int i;
+    int done = 0;
+    int found = 0;
+    char *str;
+    int write_fd;
+    uint16_t cs = cluster_size_in_bytes;
+    char *buf[cs];
+    uint32_t fileCluster;
+    uint32_t nextCluster;
+    for (i = 0; i < fileCount; i++) {
+        str = (char *)fileListing[i]->name;
+        if (strcmp(filename, str) == 0) {
+            found = 1;
+            if (fileListing[i]->low == 0 && fileListing[i]-> high == 0)
+                fileCluster = sector0->BPB_RootClus;
+            else
+                fileCluster = (((uint32_t)fileListing[i]->high) << 16) + ((uint32_t)fileListing[i]->low);
+        }    
+    }     
+    if (1 == found) {
+        printf("File: \"%s\" found at cluster 0x%08X\n", filename, fileCluster);
+        write_fd = open(filename, O_RDWR | O_CREAT, 00700);
+        
+        while (0 == done) {    
+            seekToClus(fileCluster);
+            read(fd, buf, cs);
+            write(write_fd, buf, cs);
+            nextCluster = readFAT(fileCluster);
+            if (nextCluster == EOC_MARK32)
+                done = 1;
+            else
+                fileCluster = nextCluster;
+        }
+        close(write_fd);
+        
+        //seekToClus(currentCluster);
+        //if ((read(fd, CurrentDir, sizeof(fat32Dir))) == -1) {
+        //    exitFcn("cdFcn: Read error");
+        //}
+    } else {
+        printf("File '%s' not found\n", filename);
+    }
     printf("Get function is not complete, unable to get \"%s\"\n", filename);
 }
 
@@ -401,10 +444,8 @@ void startShell(char *device){
     CurrentDir = malloc(sizeof(fat32Dir));
     CurrentDir = RootDir;
 
-    //printf("before dirlist...\n");
     /* create dir list here */
     createDirListing(currentCluster);
-    //printf("after dirlist...\n");
 
 //    printf("\nReading from device: %s\n", device);
     printf("%c", prompt);
@@ -421,7 +462,9 @@ void startShell(char *device){
 
 void createDirListing(uint32_t dirCluster) {
     dirCount = 0;
+    fileCount = 0;
     int i = 0;
+    int r;
     nextDir = malloc(sizeof(fat32Dir));
     seekToClus(dirCluster);    
     if ((read(fd, nextDir, sizeof(fat32Dir))) == -1) {
@@ -441,14 +484,32 @@ void createDirListing(uint32_t dirCluster) {
                 dirCount++;                
             }
         }
+        r = 0;
+        if (nextDir->DIR_Attr == 0x20) {
+            fileListing[fileCount] = malloc(sizeof(dirEntry));
+            for (i = 0; i < DIR_NAME_LENGTH; i++) {
+                if (nextDir->DIR_Name[i] != 0x20){
+                    fileListing[fileCount]->name[r] = nextDir->DIR_Name[i];
+                    r++;
+                }
+                if (7 == i) {
+                    fileListing[fileCount]->name[r] = '.';
+                    r++;                  
+                }
+            }
+            fileListing[fileCount]->name[r] = '\0';
+            fileListing[fileCount]->high = nextDir->DIR_FstClusHI;
+            fileListing[fileCount]->low = nextDir->DIR_FstClusLO;
+            fileCount++;                
+        }
         if ((read(fd, nextDir, sizeof(fat32Dir))) == -1) {
             exitFcn("createDirListing: Read error");
         }   
     }
     free(nextDir);
     /* print created list */
-    //for (i = 0; i < dirCount; i++)
-    //    printf("Folder %s: HB %u, LB %u\n", listing[i]->name, listing[i]->high, listing[i]->low);
+    for (i = 0; i < fileCount; i++)
+        printf("File %s: HB %u, LB %u\n", fileListing[i]->name, fileListing[i]->high, fileListing[i]->low);
 }
 
 void seekToClus(uint32_t cluster) {
